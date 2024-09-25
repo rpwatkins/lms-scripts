@@ -12,8 +12,11 @@ echo \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 sudo apt-get update
 sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+# setup docker permissions
 sudo groupadd docker
-sudo usermod -aG docker $USER
+sudo usermod -aG docker "$USER"
+# enable/start docker/container service
 sudo systemctl enable docker.service
 sudo systemctl enable containerd.service
+# todo: komodo stuff?
 

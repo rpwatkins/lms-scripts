@@ -4,27 +4,21 @@
 #Scripts (instal & swarm config)
 $install_docker_script = <<SCRIPT
 export DEBIAN_FRONTEND=noninteractive
-echo "Adding docker repo"
+echo "Installing dependencies ..."
 sudo apt-get -y update
-sudo apt-get -y install ca-certificates curl
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo Installing Docker...
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
+sudo usermod -aG docker vagrant
+newgrp docker
+sudo rm get-docker.sh
+SCRIPT
 
-# Add the repository to Apt sources:
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-echo 'installing docker'
-sudo apt-get -y update
-sudo apt-get -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-echo "setup docker permissions"
-sudo groupadd docker
-sudo usermod -aG docker "$USER"
-echo "enable/start docker/container service"
-sudo systemctl enable docker.service
-sudo systemctl enable containerd.service
+$manager_script = <<SCRIPT
+echo Swarm Init...
+sudo docker swarm init --listen-addr 172.20.20.11:2377 --advertise-addr 172.20.20.11:2377
+sudo docker swarm join-token --quiet worker > /vagrant/worker_token
+sudo docker swarm join-token --quiet manager > /vagrant/manager_token
 SCRIPT
 
 $manager_join_script = <<SCRIPT
@@ -38,11 +32,11 @@ sudo docker swarm join --token $(cat /vagrant/worker_token) 172.20.20.11:2377
 SCRIPT
 
 #Config
-BOX_DISTRIBUTION = "gusztavvargadr/ubuntu-server-2404-lts" #Ubuntu distribution(see https://wiki.ubuntu.com/Releases)
+BOX_DISTRIBUTION = "ubuntu/jammy64" #Ubuntu distribution(see https://wiki.ubuntu.com/Releases)
 MEMORY = "1024" #Memory allocated to each machine
 MANAGERS = 1 #Number of managers
 MANAGER_IP = "172.20.20.1" #Manager IP
-WORKERS = 0 #Number of workers
+WORKERS = 3 #Number of workers
 WORKER_IP = "172.20.20.10" #Workers IP
 CPUS = 2 #Number of CPUs allocated to each machine
 VAGRANTFILE_API_VERSION = "2" #Vagrantfile version
@@ -56,13 +50,17 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     # Setup Manager Nodes
     (1..MANAGERS).each do |i|
         config.vm.define "manager0#{i}" do |manager|
-          manager.vm.network :private_network, ip: "192.168.56.10"
+          manager.vm.network :private_network, ip: "#{MANAGER_IP}#{i}"
           manager.vm.hostname = "manager0#{i}"
           if i == 1
             #Only configure port to host for Manager01
-            manager.vm.network :forwarded_port, guest: 9120, host: 9120
-            #manager.vm.network :forwarded_port, guest: 27017, host: 27017
-            #manager.vm.provision "shell",inline: $manager_script, privileged: true
+            manager.vm.network :forwarded_port, guest: 8080, host: 8080
+            manager.vm.network :forwarded_port, guest: 5000, host: 5000
+            manager.vm.network :forwarded_port, guest: 9000, host: 9000
+            manager.vm.network :forwarded_port, guest: 8000, host: 8000
+            manager.vm.network :forwarded_port, guest: 1337, host: 1337
+            manager.vm.network :forwarded_port, guest: 27017, host: 27017
+            manager.vm.provision "shell",inline: $manager_script, privileged: true
           else
             manager.vm.provision "shell",inline: $manager_join_script, privileged: true
           end
